@@ -88,15 +88,17 @@ bool NamedPipeImpl::CreatePipeServer(const wchar_t* pipe_name)
         LOG(ERROR) << "CreateNamedPipe error, code: " << GetLastError();
         return FALSE;
     }
-    if (!::ConnectNamedPipe(pipe_handle_, NULL)) {
-        LOG(ERROR) << "ConnectNamedPipe error, code: " << GetLastError();
-        if (delegate_) {
-            delegate_->OnConnected(false);
-        }
-        return false;
+    OVERLAPPED ol = { 0 };
+    ol.hEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+    ::ConnectNamedPipe(pipe_handle_, &ol);
+    // 等待10秒，超时后返回失败，避免无限等待连接造成程序卡死。
+    bool connected = ::WaitForSingleObject(ol.hEvent, 10 * 1000) != WAIT_TIMEOUT;
+    ::CloseHandle(ol.hEvent);
+    if (!connected) {
+        LOG(ERROR) << L"ConnectNamedPipe error, code: %u" << GetLastError();
     }
     if (delegate_) {
-        delegate_->OnConnected(true);
+        delegate_->OnConnected(connected);
     }
     return true;
 }
